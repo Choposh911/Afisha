@@ -5,11 +5,12 @@ from movie_app.models import Director, Movie, Review
 
 
 class DirectorSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(max_length=10)
     directors = serializers.SerializerMethodField()
 
     class Meta:
         model = Director
-        fields = ['name', 'directors']
+        fields = ['id','name', 'directors']
 
     def get_directors(self, obj):
         directors = obj.directors.count()
@@ -39,3 +40,4 @@ class ReviewMovieSerializer(serializers.ModelSerializer):
     def get_average_rating(self, obj):
         average_rating = obj.reviews.aggregate(Avg('stars'))['stars__avg']
         return average_rating
+
