@@ -1,10 +1,19 @@
+import random
+from rest_framework.authtoken.models import Token
+
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.models import User
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.generics import get_object_or_404, ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from movie_app.models import Director, Movie, Review
 from movie_app.serializers import DirectorSerializer, MovieSerializer, ReviewSerializer, ReviewMovieSerializer
+from users.models import UserConfirmation
+from users.serializer import UserRegisterSerializer, UserConfirmationSerializer, UserLoginSerializer
 
 
 @api_view(['GET', 'POST'])
@@ -108,3 +117,79 @@ def review_movie_view(request):
     review = Movie.objects.all()
     serializer = ReviewMovieSerializer(review, many=True).data
     return Response(data=serializer, status=status.HTTP_200_OK)
+
+
+class RegistrationAPIView(APIView):
+    serializer_class = UserRegisterSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.create_user(**serializer.validated_data, is_active=False)
+        confirmation = UserConfirmation.objects.create(user=user, code=random.randint(100000, 999999))
+        return Response({'status': 'User registered', 'code': confirmation.code, 'data': serializer.data},
+                        status=status.HTTP_201_CREATED)
+
+
+class ConfirmUserAPIView(APIView):
+    serializer_class = UserConfirmationSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data.get('code')
+        confirmation = get_object_or_404(UserConfirmation, code=code)
+        user = confirmation.user
+        user.is_active = True
+        user.save()
+        confirmation.delete()
+        return Response({'status': 'User activated'}, status=status.HTTP_200_OK)
+
+
+class AuthorizationAPIView(APIView):
+    serializer_class = UserLoginSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = authenticate(**serializer.validated_data)
+        login(request, user)
+        if user:
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({'token': token.key})
+        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DirectoryListAPIView(ListCreateAPIView):
+    queryset = Director.objects.prefetch_related('directors').all()
+    serializer_class = DirectorSerializer
+
+
+class DirectoryDetailAPIView(RetrieveUpdateDestroyAPIView):
+    queryset = Director.objects.all()
+    serializer_class = DirectorSerializer
+
+
+class MovieListAPIView(ListCreateAPIView):
+    queryset = Movie.objects.all()
+    serializer_class = MovieSerializer
+
+
+class MovieDetailAPIView(RetrieveUpdateDestroyAPIView):
+    queryset = Movie.objects.all()
+    serializer_class = MovieSerializer
+
+
+class ReviewListAPIView(ListCreateAPIView):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+
+
+class ReviewDetailAPIView(RetrieveUpdateDestroyAPIView):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+
+
+class ProductReviewListAPIView(ListCreateAPIView):
+    queryset = Movie.objects.all()
+    serializer_class = ReviewMovieSerializer
